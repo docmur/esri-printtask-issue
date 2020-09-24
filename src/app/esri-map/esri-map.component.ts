@@ -273,7 +273,7 @@ export class EsriMapComponent implements OnInit {
       type: 'simple',
       symbol: {
         style: null,
-        type: 'simple-fill',
+        type: 'simple-line',
         size: 30,
         color: _.cloneDeep(colour),
         outline: {
