@@ -170,17 +170,18 @@ export class EsriMapComponent implements OnInit {
   addUIFeatures() {
     try {
       if (this._view) {
+        const topLeftPane = document.getElementsByClassName('esri-ui-top-left')[0];
+        if (topLeftPane) {
+          topLeftPane.append(this.printButtonElem.nativeElement)
+        }
+
+
         if (this.Home) {
           const home = this.Home({
             view: this._view
           });
 
           this._view.ui.add([home], 'top-left');
-        }
-
-        const topLeftPane = document.getElementsByClassName('esri-ui-top-left')[0];
-        if (topLeftPane) {
-          topLeftPane.append(this.printButtonElem.nativeElement)
         }
       } else {
         console.log('View Removed');
