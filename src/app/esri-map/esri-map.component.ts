@@ -1,8 +1,8 @@
 import {Component, ElementRef, OnInit, ViewChild} from '@angular/core';
 import {loadModules} from 'esri-loader';
 import esri = __esri;
+import {DataService} from '../service/data.service';
 import * as _ from 'lodash';
-import * as WKT from 'terraformer-wkt-parser';
 
 @Component({
   selector: 'app-esri-map',
@@ -39,32 +39,7 @@ export class EsriMapComponent implements OnInit {
 
   private sortedMapData = [];
 
-  private dummyData = [
-    {
-      assetSectionId: 1,
-      colour: "#667882",
-      coordinatesText: "LINESTRING (-116.515656199938 49.1129159465096, -116.514907799938 49.1120203465096)",
-      filterValues: ["Not Defined"]
-    },
-    {
-      assetSectionId: 2,
-      colour: "#667882",
-      coordinatesText: "LINESTRING (-116.513511599938 49.10351964651, -116.513491499938 49.10282934651)",
-      filterValues: ["Not Defined"]
-    },
-    {
-      assetSectionId: 3,
-      colour: "#667882",
-      coordinatesText: "LINESTRING (-116.514907799938 49.1120203465096, -116.514729399938 49.1117119465097, -116.514484299938 49.1107991465097, -116.514529299938 49.1106333465097, -116.514733899938 49.1105442465097)",
-      filterValues: ["Not Defined"]
-    },
-    {
-      assetSectionId: 4,
-      colour: "#667882",
-      coordinatesText: "LINESTRING (-116.513431199938 49.0977734465101, -116.513418199938 49.0967522465102)",
-      filterValues: ["Not Defined"]
-    }
-  ]
+  private dummyData;
 
   private _fields = [
     {
@@ -84,33 +59,59 @@ export class EsriMapComponent implements OnInit {
     }
   ]
 
-  constructor() { }
+  constructor(private dataSvc: DataService) { }
 
   ngOnInit(): void {
+    this.dummyData = this.dataSvc.grabData();
     this.initializeMap().then( () => {
-      console.log('Map Allocated');
-      this.watchForChange();
-
-      console.log('Mapping Data');
-      this.fixMapData();
-
-      console.log(this.sortedMapData);
-
-      console.log('Creating Feature Layer');
-      this.createFeatureLayers().then(() => {
-        console.log('Feature Layer');
-        console.log(this.featureLayer);
-
-        console.log('Adding Map Data');
-        this._map.add(this.featureLayer);
-      });
+      this.watchForChange().then(() => {
+        this.fixMapData().then( () => {
+          this.createFeatureLayers().then(() => {
+            this._map.add(this.featureLayer);
+          });
+        })
+      })
     })
   }
 
   ngOnDestroy() {
+    console.log('In NG On Destroy');
+
+    if (this._view) {
+      try {
+        this._view.container = null;
+        this._view.destroy();
+        this._view = null;
+      } catch (error) {
+        console.log(error);
+      }
+    }
+
+    if (this._map) {
+      try {
+        this._map.destroy();
+        this._map = null;
+      } catch (error) {
+        console.log(error);
+      }
+    }
+
+    if (this.featureLayer) {
+      try {
+        this.featureLayer.destroy();
+        this.featureLayer = null;
+      } catch (error) {
+        console.log(error);
+      }
+    }
   }
 
   async initializeMap() {
+    const options = {
+      version: '4.17',
+      css: true
+    };
+
     [ this.EsriMap,
       this.EsriMapView,
       this.FeatureLayer,
@@ -139,7 +140,7 @@ export class EsriMapComponent implements OnInit {
       'esri/tasks/PrintTask',
       'esri/tasks/support/PrintTemplate',
       'esri/tasks/support/PrintParameters',
-    ]);
+    ], options);
 
     /* Configure and initialize the map */
     const mapProperties: esri.MapProperties = {
@@ -161,10 +162,12 @@ export class EsriMapComponent implements OnInit {
   }
 
   watchForChange() {
-    this.WatchUtil.whenTrue(this._view, 'stationary', () => {
-      console.log('Adding Features');
-      this.addUIFeatures();
-    });
+    return new Promise((r) => {
+      this.WatchUtil.whenTrue(this._view, 'stationary', () => {
+        // this.addUIFeatures();
+        r();
+      });
+    })
   }
 
   addUIFeatures() {
@@ -175,14 +178,18 @@ export class EsriMapComponent implements OnInit {
           topLeftPane.append(this.printButtonElem.nativeElement)
         }
 
+        try {
+          if (this.Home) {
+            const home = this.Home({
+              view: this._view
+            });
 
-        if (this.Home) {
-          const home = this.Home({
-            view: this._view
-          });
-
-          this._view.ui.add([home], 'top-left');
+            this._view.ui.add([home], 'top-left');
+          }
+        } catch (error) {
+          console.log(error);
         }
+
       } else {
         console.log('View Removed');
       }
@@ -192,8 +199,6 @@ export class EsriMapComponent implements OnInit {
   }
 
   printMap() {
-    console.log('In Print Map');
-
     const printTask = this.PrintTask({
       url: 'https://utility.arcgisonline.com/arcgis/rest/services/Utilities/PrintingTools/GPServer/Export%20Web%20Map%20Task'
     });
@@ -213,10 +218,6 @@ export class EsriMapComponent implements OnInit {
     });
 
     printTask.execute(params).then( (result) => {
-
-      console.log('Result');
-      console.log(result);
-
       window.open(result.url);
     }, (err) => {
       console.log('ESRI Print Task Error: ', err);
@@ -224,27 +225,24 @@ export class EsriMapComponent implements OnInit {
   }
 
   fixMapData() {
-    this.sortedMapData = this.dummyData.map((entry) => {
-        const _temp = WKT.parse(entry.coordinatesText);
-        if (_temp) {
-          let geometry;
-          if (_temp.type === 'LineString') {
-            geometry = {
-              type: 'polyline',
-              paths: 'coordinates' in _temp ? _temp.coordinates : null,
-            }
-          }
-
-          return {
-            geometry: _.cloneDeep(geometry),
-            attributes: {
-              ObjectID: entry.assetSectionId,
-              colour: _.cloneDeep(entry.colour),
-              geometry: _.cloneDeep(geometry.type),
-            }
-          };
+    return new Promise((r) => {
+      this.sortedMapData = this.dummyData.features.map((entries, index) => {
+        const geometry = {
+          type: 'polyline',
+          paths: entries.geometry.coordinates
         }
-    });
+
+        return {
+          geometry: _.cloneDeep(geometry),
+          attributes: {
+            ObjectID: index,
+            colour: '#9ee86b',
+            geometry: 'polyline',
+          }
+        };
+      });
+      r();
+    })
   }
 
   createFeatureLayers() {
@@ -272,15 +270,15 @@ export class EsriMapComponent implements OnInit {
     return {
       type: 'simple',
       symbol: {
-        style: null,
         type: 'simple-line',
         size: 30,
+        width: 3,
         color: _.cloneDeep(colour),
         outline: {
           width: 4,
           color: _.cloneDeep(colour),
         }
-      },
+      }
     }
   }
 }

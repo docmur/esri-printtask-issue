@@ -1,1 +1,4 @@
-<app-esri-map></app-esri-map>
+<button (click)="hideMap = true">Dashboard</button>
+<button (click)="hideMap = false">Map</button>
+
+<app-esri-map *ngIf="hideMap == false"></app-esri-map>
